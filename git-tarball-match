@@ -7,9 +7,12 @@ use File::Temp qw/tempdir/;
 
 my $ignore_pattern;
 my $verbose;
+my $commit;
 
 GetOptions("ignore=s" => \$ignore_pattern,
-	"verbose" => \$verbose) or die "Error in args";
+	"verbose" => \$verbose,
+	"commit=s" => \$commit,
+) or die "Error in args";
 
 sub verbose {
 	my ($text) = @_;
@@ -103,7 +106,12 @@ my $md5sum = `$md5sum_cmd`;
 my %tarmd5sum = md5sum_out_to_hash($md5sum);
 
 my %scores;
-open my $git_log, '-|', 'git log --format=%H' or die "git log: $?";
+my $git_log;
+my $git_log_cmd = 'git log --format=%H';
+if (defined $commit) {
+	$git_log_cmd = "git log -1 --format=%H $commit";
+}
+open $git_log, '-|', $git_log_cmd or die "git log: $?";
 while (my $h = <$git_log>) {
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
@@ -115,6 +123,6 @@ while (my $h = <$git_log>) {
 	verbose "Score: $h: " . $scores{$h};
 }
 
-foreach my $h (sort { $scores{$b} <=> $scores{$a} } keys %scores) {
+foreach my $h (sort { $scores{$a} <=> $scores{$b} } keys %scores) {
 	print "$h $scores{$h}\n";
 }
