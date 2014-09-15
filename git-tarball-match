@@ -1,0 +1,120 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Getopt::Long;
+
+use File::Temp qw/tempdir/;
+
+my $ignore_pattern;
+my $verbose;
+
+GetOptions("ignore=s" => \$ignore_pattern,
+	"verbose" => \$verbose) or die "Error in args";
+
+sub verbose {
+	my ($text) = @_;
+	print "$text\n" if ($verbose);
+}
+sub usage {
+	print "Usage: $0 <tarball>\n";
+}
+
+if (scalar @ARGV == 0) {
+	usage();
+	exit 1;
+}
+
+sub pause {
+	my ($text) = @_;
+	print "$text\n";
+	<STDIN>;
+}
+
+sub run {
+	my ($cmd) = @_;
+	#print "$cmd\n";
+	system("$cmd") == 0
+		or die "$cmd: $?";
+}
+
+sub md5sum_out_to_hash {
+	my ($md5sum) = @_;
+	chomp $md5sum;
+	my @lines = split /\n/, $md5sum;
+	my %hash;
+	foreach my $l (@lines) {
+		if (defined $ignore_pattern && $l =~ /$ignore_pattern/) {
+			verbose "Ignore: $l";
+			next;
+		}
+
+		my ($md5, $file) = $l =~ /([0-9a-f]+)\s+(.*)/;
+		#print "file [$file] md5 [$md5]\n";
+		$hash{$file} = $md5;
+	}
+	return %hash;
+}
+
+sub get_git_md5sum {
+	my ($commit_sha1) = @_;
+	my %hash;
+	#open my $fd, '-|', "git ls-files --with-tree=$commit_sha1" or die "git ls-files: $?";
+	my $cmd = "git ls-tree -r --name-only --full-tree $commit_sha1";
+	open my $fd, '-|', $cmd or die "$cmd: $?";
+	while (my $file = <$fd>) {
+		chomp $file;
+		my $md5_cmd = "{ git show $commit_sha1:$file|md5sum|awk '{print \$1}'; } 2> /dev/shm/error.txt";
+		my $md5 = `$md5_cmd`;
+		if ( -s '/dev/shm/error.txt') {
+			print "$cmd";
+			print "-- [$md5_cmd]\n";
+			print "Any key ...";
+			<STDIN>;
+		}
+		chomp $md5;
+		$hash{$file} = $md5;
+	}
+	close $fd;
+	return %hash;
+}
+
+sub md5_score {
+	my ($tgz_md5, $git_md5) = @_;
+	my $nmatch = 0;
+	foreach my $file (keys %$git_md5) {
+		#print "Comparing $file\n";
+		if ($tgz_md5->{$file} && $tgz_md5->{$file} eq $git_md5->{$file}) {
+			$nmatch += 1;
+		}
+	}
+	my $total_files = scalar keys %$tgz_md5;
+
+	#print "return $nmatch / $total_files";
+	return $nmatch / $total_files;
+}
+
+my $tarball=$ARGV[0];
+my $xdir = tempdir( CLEANUP => 1 );
+#print "workdir $xdir\n";
+
+run("tar --strip-components=1 -C $xdir -xf $tarball");
+my $md5sum_cmd = "find $xdir -type f -print|xargs md5sum|sed -e 's,$xdir/',,";
+my $md5sum = `$md5sum_cmd`;
+my %tarmd5sum = md5sum_out_to_hash($md5sum);
+
+my %scores;
+open my $git_log, '-|', 'git log --format=%H' or die "git log: $?";
+while (my $h = <$git_log>) {
+	chomp $h;
+	my %gitmd5sum = get_git_md5sum($h);
+	$scores{$h} = md5_score(\%tarmd5sum, \%gitmd5sum);
+	if ($scores{$h} == 1) {
+		print "Matching commit hash: $h\n";
+		exit 0;
+	}
+	verbose "Score: $h: " . $scores{$h};
+}
+
+foreach my $h (sort { $scores{$b} <=> $scores{$a} } keys %scores) {
+	print "$h $scores{$h}\n";
+}
