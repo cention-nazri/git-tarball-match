@@ -12,6 +12,7 @@ my $debug = 0;
 my $strip_components = 1;
 my $commit;
 my $diff;
+my $difffull;
 my $opt_sort;
 my $xdir = tempdir( CLEANUP => 1 );
 my $bdir = tempdir( CLEANUP => 1);
@@ -25,6 +26,7 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"verbose" => \$verbose,
 	"strip-components=i" => \$strip_components,
 	"diff" => \$diff,
+	"diff-full" => \$difffull,
 	"sort" => \$opt_sort,
 	"debug=i" => \$debug,
 	"commit=s" => \$commit,
@@ -112,19 +114,24 @@ sub get_git_md5sum {
 	return %hash;
 }
 
-sub show_diff_count {
+sub show_diff {
 	my ($commit, $file) = @_;
 
 	my $tgz_file = "$xdir/$file";
-	my $git_file = "$bdir/" . basename($file);
+	my $git_file = "$bdir/" . basename($file) . "-$commit";
 	my $cmd = "git show $commit:./$file > $git_file";
 	system($cmd);
-	chomp(my $diff = `git diff --no-index '$tgz_file' '$git_file'`);
-	my @lines = split "\n", $diff;
-	@lines = grep !/^(---|\+\+\+) /, @lines;
-	my $nadd = grep /^\+/, @lines;
-	my $nrem = grep /^-/, @lines;
-	print "  $file -$nrem,+$nadd\n";
+	my $git_diff = `git diff --no-index '$tgz_file' '$git_file'`;
+	if ($diff) {
+		chomp($git_diff);
+		my @lines = split "\n", $git_diff;
+		@lines = grep !/^(---|\+\+\+) /, @lines;
+		my $nadd = grep /^\+/, @lines;
+		my $nrem = grep /^-/, @lines;
+		print "  $file -$nrem,+$nadd\n";
+	} elsif ($difffull) {
+		print $git_diff;
+	}
 }
 
 sub md5_score {
@@ -140,8 +147,8 @@ sub md5_score {
 			} else {
 				$nnonmatch += 1;
 				debug " ! $file";
-				if ($diff) {
-					show_diff_count($commit, $file);
+				if ($diff || $difffull) {
+					show_diff($commit, $file);
 				}
 				#debug "      md5 $tgz_md5->{$file}";
 				#debug "  git md5 $git_md5->{$file}";
@@ -160,7 +167,11 @@ sub md5_score {
 	if ($nnonmatch > 0) {
 		debug " $nnonmatch/$total_files_compared files differ";
 	}
-	return ($score, $total_files_compared);
+	return {
+		score => $score,
+		nmatch => $total_files_compared,
+		nnonmatch => $nnonmatch,
+	};
 }
 
 my $tarball=$ARGV[0];
@@ -171,32 +182,33 @@ my $md5sum_cmd = "find $xdir -type f -print|xargs md5sum|sed -e 's,$xdir/',,";
 my $md5sum = `$md5sum_cmd`;
 my %tarmd5sum = md5sum_out_to_hash($md5sum);
 
-my %scores;
 my $git_log;
 my $git_log_cmd = 'git log --format=%H';
 if (defined $commit) {
 	$git_log_cmd = "git log -1 --format=%H $commit";
 }
 open $git_log, '-|', $git_log_cmd or die "git log: $?";
+my %scores;
 while (my $h = <$git_log>) {
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
 	debug $h;
-	my ($score, $nmatch) = md5_score($h, \%tarmd5sum, \%gitmd5sum);
-	$scores{$h} = $score;
-	if ($scores{$h} == 1) {
+	my $score = md5_score($h, \%tarmd5sum, \%gitmd5sum);
+	if ($score->{score} == 1) {
 		print "Matching commit hash: $h\n";
 		exit 0;
 	}
+	my $out_txt = "$h $score->{score} ($score->{nnonmatch}/$score->{nmatch} files differ)";
 	if (!$opt_sort) {
-		print "$h $scores{$h}\n";
+		print "$out_txt\n";
 	} else {
-		verbose "$h $scores{$h} $nmatch";
+		verbose $out_txt;
 	}
+	$scores{$h} = $score;
 }
 
 if ($opt_sort) {
-	foreach my $h (sort { $scores{$a} <=> $scores{$b} } keys %scores) {
-		print "$h $scores{$h}\n";
+	foreach my $h (sort { $scores{$a}->{score} <=> $scores{$b}->{score} } keys %scores) {
+		print "$h $scores{$h}->{score} $scores{$h}->{nmatch}\n";
 	}
 }
