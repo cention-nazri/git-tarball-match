@@ -2,21 +2,50 @@
 use strict;
 use warnings;
 use Getopt::Long;
+use File::Basename;
 
 use File::Temp qw/tempdir/;
 
 my $ignore_pattern;
 my $verbose;
+my $debug = 0;
+my $strip_components = 1;
 my $commit;
+my $diff;
+my $opt_sort;
+my $xdir = tempdir( CLEANUP => 1 );
+my $bdir = tempdir( CLEANUP => 1);
+
+$SIG{USR1} = sub {
+	print STDERR "Got USR1, toggling verbose mode.\n";
+	$verbose = ! $verbose;
+};
 
 GetOptions("ignore=s" => \$ignore_pattern,
 	"verbose" => \$verbose,
+	"strip-components=i" => \$strip_components,
+	"diff" => \$diff,
+	"sort" => \$opt_sort,
+	"debug=i" => \$debug,
 	"commit=s" => \$commit,
 ) or die "Error in args";
 
+if ($debug) {
+	$|++;
+}
+
 sub verbose {
-	my ($text) = @_;
+	my ($text, $level) = @_;
 	print "$text\n" if ($verbose);
+}
+sub debug {
+	my ($text, $debug_level) = @_;
+	if (!defined $debug_level) {
+		$debug_level = 0;
+	}
+	if ($debug > $debug_level) {
+		print "$text\n";
+	}
 }
 sub usage {
 	print "Usage: $0 <tarball>\n";
@@ -35,7 +64,7 @@ sub pause {
 
 sub run {
 	my ($cmd) = @_;
-	#print "$cmd\n";
+	verbose "$cmd";
 	system("$cmd") == 0
 		or die "$cmd: $?";
 }
@@ -62,16 +91,18 @@ sub get_git_md5sum {
 	my ($commit_sha1) = @_;
 	my %hash;
 	#open my $fd, '-|', "git ls-files --with-tree=$commit_sha1" or die "git ls-files: $?";
-	my $cmd = "git ls-tree -r --name-only --full-tree $commit_sha1";
+	my $cmd = "git ls-tree -r --name-only $commit_sha1";
 	open my $fd, '-|', $cmd or die "$cmd: $?";
+	my $tar_stderr_file = '/dev/shm/error.txt';
 	while (my $file = <$fd>) {
 		chomp $file;
-		my $md5_cmd = "{ git show $commit_sha1:$file|md5sum|awk '{print \$1}'; } 2> /dev/shm/error.txt";
+		my $md5_cmd = "{ git show '$commit_sha1:./$file'|md5sum|awk '{print \$1}'; } 2> $tar_stderr_file";
 		my $md5 = `$md5_cmd`;
-		if ( -s '/dev/shm/error.txt') {
-			print "$cmd";
+		if ( -s $tar_stderr_file) {
+			print "$cmd ";
 			print "-- [$md5_cmd]\n";
-			print "Any key ...";
+			system("echo cat $tar_stderr_file; cat $tar_stderr_file");
+			print "Press any key to continue...";
 			<STDIN>;
 		}
 		chomp $md5;
@@ -81,15 +112,39 @@ sub get_git_md5sum {
 	return %hash;
 }
 
+sub show_diff_count {
+	my ($commit, $file) = @_;
+
+	my $tgz_file = "$xdir/$file";
+	my $git_file = "$bdir/" . basename($file);
+	my $cmd = "git show $commit:./$file > $git_file";
+	system($cmd);
+	chomp(my $diff = `git diff --no-index '$tgz_file' '$git_file'`);
+	my @lines = split "\n", $diff;
+	@lines = grep !/^(---|\+\+\+) /, @lines;
+	my $nadd = grep /^\+/, @lines;
+	my $nrem = grep /^-/, @lines;
+	print "  $file -$nrem,+$nadd\n";
+}
+
 sub md5_score {
-	my ($tgz_md5, $git_md5) = @_;
+	my ($commit, $tgz_md5, $git_md5) = @_;
 	my $nmatch = 0;
 	my $total_files_compared = 0;
+	my $nnonmatch = 0;
 	foreach my $file (keys %$git_md5) {
-		#print "Comparing $file\n";
 		if ($tgz_md5->{$file}) {
 			if ($tgz_md5->{$file} eq $git_md5->{$file}) {
+				#debug "        match.";
 				$nmatch += 1;
+			} else {
+				$nnonmatch += 1;
+				debug " ! $file";
+				if ($diff) {
+					show_diff_count($commit, $file);
+				}
+				#debug "      md5 $tgz_md5->{$file}";
+				#debug "  git md5 $git_md5->{$file}";
 			}
 			$total_files_compared++;
 		}
@@ -98,14 +153,20 @@ sub md5_score {
 
 	#print "return $nmatch / $total_files";
 	#return $nmatch / $total_files;
-	return $nmatch / $total_files_compared;
+	my $score = 0;
+	if ($total_files_compared > 0) {
+		$score = $nmatch / $total_files_compared;
+	}
+	if ($nnonmatch > 0) {
+		debug " $nnonmatch/$total_files_compared files differ";
+	}
+	return ($score, $total_files_compared);
 }
 
 my $tarball=$ARGV[0];
-my $xdir = tempdir( CLEANUP => 1 );
 #print "workdir $xdir\n";
 
-run("tar --strip-components=1 -C $xdir -xf $tarball");
+run("tar --strip-components=$strip_components -C $xdir -xf $tarball");
 my $md5sum_cmd = "find $xdir -type f -print|xargs md5sum|sed -e 's,$xdir/',,";
 my $md5sum = `$md5sum_cmd`;
 my %tarmd5sum = md5sum_out_to_hash($md5sum);
@@ -120,14 +181,22 @@ open $git_log, '-|', $git_log_cmd or die "git log: $?";
 while (my $h = <$git_log>) {
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
-	$scores{$h} = md5_score(\%tarmd5sum, \%gitmd5sum);
+	debug $h;
+	my ($score, $nmatch) = md5_score($h, \%tarmd5sum, \%gitmd5sum);
+	$scores{$h} = $score;
 	if ($scores{$h} == 1) {
 		print "Matching commit hash: $h\n";
 		exit 0;
 	}
-	verbose "Score: $h: " . $scores{$h};
+	if (!$opt_sort) {
+		print "$h $scores{$h}\n";
+	} else {
+		verbose "$h $scores{$h} $nmatch";
+	}
 }
 
-foreach my $h (sort { $scores{$a} <=> $scores{$b} } keys %scores) {
-	print "$h $scores{$h}\n";
+if ($opt_sort) {
+	foreach my $h (sort { $scores{$a} <=> $scores{$b} } keys %scores) {
+		print "$h $scores{$h}\n";
+	}
 }
