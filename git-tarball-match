@@ -170,6 +170,7 @@ sub md5_score {
 		score => $score,
 		ncompared => $ncompared,
 		nnonmatch => $nnonmatch,
+		nmatch => $nmatch,
 	};
 }
 
@@ -201,12 +202,18 @@ my %scores;
 my $highest_score = {
 	score => 0,
 };
+my $max_nmatched = 0;
+my $ncompared = 0;
 while (my $h = <$git_log>) {
+	$ncompared++;
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
 	debug $h;
 	my $s = md5_score($h, \%tarmd5sum, \%gitmd5sum);
-	if ($s->{score} == 1) {
+	if ($s->{nmatch} > $max_nmatched) {
+		$max_nmatched = $s->{nmatch};
+	}
+	if ($s->{score} == 1 && $s->{nmatch} >= $max_nmatched) {
 		print "Matching commit hash: $h\n";
 		exit 0;
 	}
@@ -214,7 +221,6 @@ while (my $h = <$git_log>) {
 		$highest_score = $s;
 	}
 	my $out_txt = format_score_report($s);
-	#my $out_txt = "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)";
 	if (!$opt_sort) {
 		print "$out_txt\n";
 	} else {
@@ -227,8 +233,9 @@ if ($opt_sort) {
 	foreach my $h (sort { $scores{$a}->{score} <=> $scores{$b}->{score} } keys %scores) {
 		my $s = $scores{$h};
 		print format_score_report($s) . "\n";
-		#print "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)\n";
 	}
 } else {
-	print "Highest score: " . format_score_report($highest_score) . "\n";
+	if ($ncompared > 1) {
+		print "Closest match: " . format_score_report($highest_score) . "\n";
+	}
 }
