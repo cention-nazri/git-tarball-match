@@ -166,10 +166,21 @@ sub md5_score {
 		debug " $nnonmatch/$ncompared files differ";
 	}
 	return {
+		commit => $commit,
 		score => $score,
 		ncompared => $ncompared,
 		nnonmatch => $nnonmatch,
 	};
+}
+
+sub format_score_report {
+	my ($score_data) = @_;
+
+	return sprintf("%s %.7f (%d/%d files differ)",
+		$score_data->{commit}, $score_data->{score},
+		$score_data->{nnonmatch}, $score_data->{ncompared}
+	);
+	#return "$commit $score_data->{score} ($score_data->{nnonmatch}/$score_data->{ncompared} files differ)";
 }
 
 my $tarball=$ARGV[0];
@@ -187,6 +198,9 @@ if (defined $commit) {
 }
 open $git_log, '-|', $git_log_cmd or die "git log: $?";
 my %scores;
+my $highest_score = {
+	score => 0,
+};
 while (my $h = <$git_log>) {
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
@@ -196,7 +210,11 @@ while (my $h = <$git_log>) {
 		print "Matching commit hash: $h\n";
 		exit 0;
 	}
-	my $out_txt = "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)";
+	if ($s->{score} > $highest_score->{score}) {
+		$highest_score = $s;
+	}
+	my $out_txt = format_score_report($s);
+	#my $out_txt = "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)";
 	if (!$opt_sort) {
 		print "$out_txt\n";
 	} else {
@@ -208,6 +226,9 @@ while (my $h = <$git_log>) {
 if ($opt_sort) {
 	foreach my $h (sort { $scores{$a}->{score} <=> $scores{$b}->{score} } keys %scores) {
 		my $s = $scores{$h};
-		print "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)\n";
+		print format_score_report($s) . "\n";
+		#print "$h $s->{score} ($s->{nnonmatch}/$s->{ncompared} files differ)\n";
 	}
+} else {
+	print "Highest score: " . format_score_report($highest_score) . "\n";
 }
