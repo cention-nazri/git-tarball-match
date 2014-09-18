@@ -14,6 +14,8 @@ my $commit;
 my $diffline;
 my $diff;
 my $opt_limit = 0;
+my $opt_show_match;
+my $opt_show_nomatch;
 my $opt_sort;
 my $xdir = tempdir( CLEANUP => 1 );
 my $bdir = tempdir( CLEANUP => 1);
@@ -29,6 +31,8 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"diff-line" => \$diffline,
 	"diff" => \$diff,
 	"limit=i" => \$opt_limit,
+	"show-no-match" => \$opt_show_nomatch,
+	"show-match" => \$opt_show_match,
 	"sort" => \$opt_sort,
 	"debug=i" => \$debug,
 	"commit=s" => \$commit,
@@ -149,7 +153,13 @@ sub md5_score {
 		if ($tgz_md5->{$file}) {
 			if ($tgz_md5->{$file} eq $git_md5->{$file}) {
 				$nmatch += 1;
+				if ($opt_show_match) {
+					print " same: $file\n";
+				}
 			} else {
+				if ($opt_show_nomatch) {
+					print " differ: $file\n";
+				}
 				$nnonmatch += 1;
 				debug " ! $file";
 				if ($diffline || $diff) {
