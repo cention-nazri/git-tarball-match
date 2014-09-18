@@ -13,6 +13,7 @@ my $strip_components = 1;
 my $commit;
 my $diffline;
 my $diff;
+my $opt_limit = 0;
 my $opt_sort;
 my $xdir = tempdir( CLEANUP => 1 );
 my $bdir = tempdir( CLEANUP => 1);
@@ -27,6 +28,7 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"strip-components=i" => \$strip_components,
 	"diff-line" => \$diffline,
 	"diff" => \$diff,
+	"limit=i" => \$opt_limit,
 	"sort" => \$opt_sort,
 	"debug=i" => \$debug,
 	"commit=s" => \$commit,
@@ -143,6 +145,7 @@ sub md5_score {
 	# total_perfect_score = (n unique files in both git and tgz) * 3
 
 	foreach my $file (keys %$git_md5) {
+		debug " git $file";
 		if ($tgz_md5->{$file}) {
 			if ($tgz_md5->{$file} eq $git_md5->{$file}) {
 				$nmatch += 1;
@@ -223,7 +226,12 @@ my $highest_score = {
 	score => 0,
 };
 my $max_nmatched = 0;
+my $commit_count = 0;
 while (my $h = <$git_log>) {
+	$commit_count++;
+	if ($opt_limit > 0 && $commit_count > $opt_limit) {
+		exit 0;
+	}
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
 	debug $h;
