@@ -53,11 +53,6 @@ sub usage {
 	print "Usage: $0 <tarball>\n";
 }
 
-if (scalar @ARGV == 0) {
-	usage();
-	exit 1;
-}
-
 sub pause {
 	my ($text) = @_;
 	print "$text\n";
@@ -139,10 +134,17 @@ sub md5_score {
 	my $nmatch = 0;
 	my $ncompared = 0;
 	my $nnonmatch = 0;
+
+	# in_git  in_tgz  md5sum_match?
+	# 1 or 0  1 or 0      1 or 0
+	#
+	# individual score = (in_git + in_tgz + md5sum_match)
+	#
+	# total_perfect_score = (n unique files in both git and tgz) * 3
+
 	foreach my $file (keys %$git_md5) {
 		if ($tgz_md5->{$file}) {
 			if ($tgz_md5->{$file} eq $git_md5->{$file}) {
-				#debug "        match.";
 				$nmatch += 1;
 			} else {
 				$nnonmatch += 1;
@@ -169,13 +171,21 @@ sub md5_score {
 		commit => $commit,
 		score => $score,
 		ncompared => $ncompared,
-		nnonmatch => $nnonmatch,
+		nnonmatch => $nnonmatch, # this is redundant!
 		nmatch => $nmatch,
 	};
 }
 
+use Carp qw/confess/;
 sub format_score_report {
 	my ($score_data) = @_;
+
+	#if (! defined $score_data->{HAHA}) { print "HAH not defined\n"; exit 1; }
+	if (! defined $score_data->{commit}) { confess "commit not defined\n"; exit 1; }
+	if (! defined $score_data->{score}) { confess "score not defined\n"; exit 1; }
+	if (! defined $score_data->{nnonmatch}) { confess "nnonmatch not defined\n"; exit 1; }
+	if (! defined $score_data->{ncompared}) { confess "ncompared not defined\n"; exit 1; }
+
 
 	return sprintf("%s %.7f (%d/%d files differ)",
 		$score_data->{commit}, $score_data->{score},
@@ -184,7 +194,17 @@ sub format_score_report {
 	#return "$commit $score_data->{score} ($score_data->{nnonmatch}/$score_data->{ncompared} files differ)";
 }
 
+if (scalar @ARGV == 0) {
+	usage();
+	exit 1;
+}
+
 my $tarball=$ARGV[0];
+my $git_log_args = "";
+if (scalar @ARGV > 1) {
+	shift @ARGV;
+	$git_log_args = join(" ", @ARGV);
+}
 #print "workdir $xdir\n";
 
 run("tar --strip-components=$strip_components -C $xdir -xf $tarball");
@@ -193,7 +213,7 @@ my $md5sum = `$md5sum_cmd`;
 my %tarmd5sum = md5sum_out_to_hash($md5sum);
 
 my $git_log;
-my $git_log_cmd = 'git log --format=%H';
+my $git_log_cmd = 'git log --format=%H ' . $git_log_args;
 if (defined $commit) {
 	$git_log_cmd = "git log -1 --format=%H $commit";
 }
@@ -203,9 +223,7 @@ my $highest_score = {
 	score => 0,
 };
 my $max_nmatched = 0;
-my $ncompared = 0;
 while (my $h = <$git_log>) {
-	$ncompared++;
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
 	debug $h;
@@ -214,7 +232,7 @@ while (my $h = <$git_log>) {
 		$max_nmatched = $s->{nmatch};
 	}
 	if ($s->{score} == 1 && $s->{nmatch} >= $max_nmatched) {
-		print "Matching commit hash: $h\n";
+		print "Matching commit hash: $h - nmatch $s->{nmatch}, maxnmatch $max_nmatched\n";
 		exit 0;
 	}
 	if ($s->{score} > $highest_score->{score}) {
@@ -235,7 +253,7 @@ if ($opt_sort) {
 		print format_score_report($s) . "\n";
 	}
 } else {
-	if ($ncompared > 1) {
+	if (defined $highest_score->{commit}) {
 		print "Closest match: " . format_score_report($highest_score) . "\n";
 	}
 }
