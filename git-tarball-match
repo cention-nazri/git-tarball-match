@@ -20,6 +20,11 @@ my $opt_sort;
 my $xdir = tempdir( CLEANUP => 1 );
 my $bdir = tempdir( CLEANUP => 1);
 
+my $tmp_dir = '/tmp';
+if (-d "/dev/shm") {
+	$tmp_dir = "/dev/shm";
+}
+
 $SIG{USR1} = sub {
 	print STDERR "Got USR1, toggling verbose mode.\n";
 	$verbose = ! $verbose;
@@ -96,7 +101,7 @@ sub get_git_md5sum {
 	#open my $fd, '-|', "git ls-files --with-tree=$commit_sha1" or die "git ls-files: $?";
 	my $cmd = "git ls-tree -r --name-only $commit_sha1";
 	open my $fd, '-|', $cmd or die "$cmd: $?";
-	my $tar_stderr_file = '/dev/shm/error.txt';
+	my $tar_stderr_file = "$tmp_dir/error.txt";
 	while (my $file = <$fd>) {
 		chomp $file;
 		my $md5_cmd = "{ git show '$commit_sha1:./$file'|md5sum|awk '{print \$1}'; } 2> $tar_stderr_file";
