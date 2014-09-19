@@ -154,11 +154,12 @@ sub show_diff {
 	my ($commit, $file) = @_;
 
 	my $tgz_file = "$xdir/$file";
-	my $git_file = "$bdir/" . basename($file) . "-$commit";
+	my $git_file = escape_single_quotes("$bdir/" . basename($file) . "-$commit");
 	my $cmd = "git show $commit:./$file > $git_file";
 	system($cmd);
-	my $git_diff = `git diff --no-index '$tgz_file' '$git_file'`;
+	my $git_diff_cmd = "git diff --no-index '$tgz_file' '$git_file'";
 	if ($diffline) {
+		my $git_diff = `$git_diff_cmd`;
 		chomp($git_diff);
 		my @lines = split "\n", $git_diff;
 		@lines = grep !/^(---|\+\+\+) /, @lines;
@@ -166,7 +167,7 @@ sub show_diff {
 		my $nrem = grep /^-/, @lines;
 		print "  $file -$nrem,+$nadd\n";
 	} elsif ($diff) {
-		print $git_diff;
+		system($git_diff_cmd);
 	}
 }
 
