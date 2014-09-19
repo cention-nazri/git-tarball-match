@@ -169,7 +169,7 @@ sub show_diff {
 		my $nrem = grep /^-/, @lines;
 		print "  $file -$nrem,+$nadd\n";
 	} elsif ($opt_diff_one_by_one) {
-		system($git_diff_cmd);
+		system("sh -c 'GIT_PAGER= $git_diff_cmd'");
 	}
 }
 
