@@ -13,6 +13,7 @@ my $strip_components = 1;
 my $commit;
 my $diffline;
 my $diff;
+my $opt_diff_opt = '';
 my $opt_limit = 0;
 my $opt_show_match;
 my $opt_show_nomatch;
@@ -34,6 +35,7 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"strip-components=i" => \$strip_components,
 	"diff-line" => \$diffline,
 	"diff" => \$diff,
+	"diff-opt=s" => \$opt_diff_opt,
 	"limit=i" => \$opt_limit,
 	"show-no-match" => \$opt_show_nomatch,
 	"show-match" => \$opt_show_match,
@@ -157,7 +159,7 @@ sub show_diff {
 	my $git_file = escape_single_quotes("$bdir/" . basename($file) . "-$commit");
 	my $cmd = "git show $commit:./$file > $git_file";
 	system($cmd);
-	my $git_diff_cmd = "git diff --no-index '$tgz_file' '$git_file'";
+	my $git_diff_cmd = "git diff $opt_diff_opt --no-index '$tgz_file' '$git_file'";
 	if ($diffline) {
 		my $git_diff = `$git_diff_cmd`;
 		chomp($git_diff);
