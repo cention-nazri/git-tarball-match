@@ -261,9 +261,14 @@ if (scalar @ARGV > 1) {
 }
 #print "workdir $xdir\n";
 
-run("tar --strip-components=$strip_components -C $xdir -xf $tarball");
+my $tar_cmd = "tar --strip-components=$strip_components -C $xdir -xf $tarball";
+run($tar_cmd);
 my $md5sum_cmd = "find $xdir -type f -print|xargs md5sum|sed -e 's,$xdir/',,";
 my $md5sum = `$md5sum_cmd`;
+if ($md5sum =~ /^[0-9a-f]+\s+-/) {
+	die "No files extracted: [$tar_cmd]";
+}
+
 my %tarmd5sum = md5sum_out_to_hash($md5sum);
 if ($debug > 0) {
 	my @files = keys %tarmd5sum;
