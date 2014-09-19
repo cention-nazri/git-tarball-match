@@ -18,7 +18,6 @@ my $opt_show_match;
 my $opt_show_nomatch;
 my $opt_sort;
 my $xdir = tempdir( CLEANUP => 1 );
-my $bdir = tempdir( CLEANUP => 1);
 
 my $tmp_dir = '/tmp';
 if (-d "/dev/shm") {
@@ -154,6 +153,7 @@ sub show_diff {
 	my ($commit, $file) = @_;
 
 	my $tgz_file = "$xdir/$file";
+	my $bdir = dirname($tgz_file);
 	my $git_file = escape_single_quotes("$bdir/" . basename($file) . "-$commit");
 	my $cmd = "git show $commit:./$file > $git_file";
 	system($cmd);
