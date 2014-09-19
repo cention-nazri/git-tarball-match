@@ -12,7 +12,7 @@ my $debug = 0;
 my $strip_components = 1;
 my $commit;
 my $diffline;
-my $diff;
+my $opt_diff_one_by_one;
 my $opt_diff_opt = '';
 my $opt_limit = 0;
 my $opt_show_match;
@@ -34,7 +34,7 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"verbose" => \$verbose,
 	"strip-components=i" => \$strip_components,
 	"diff-line" => \$diffline,
-	"diff" => \$diff,
+	"diff" => \$opt_diff_one_by_one,
 	"diff-opt=s" => \$opt_diff_opt,
 	"limit=i" => \$opt_limit,
 	"show-no-match" => \$opt_show_nomatch,
@@ -168,7 +168,7 @@ sub show_diff {
 		my $nadd = grep /^\+/, @lines;
 		my $nrem = grep /^-/, @lines;
 		print "  $file -$nrem,+$nadd\n";
-	} elsif ($diff) {
+	} elsif ($opt_diff_one_by_one) {
 		system($git_diff_cmd);
 	}
 }
@@ -204,7 +204,7 @@ sub md5_score {
 				} elsif ($opt_show_nomatch) {
 					print " differ: $file\n";
 				}
-				if ($diffline || $diff) {
+				if ($diffline || $opt_diff_one_by_one) {
 					show_diff($commit, $file);
 				}
 				#debug "      md5 $tgz_md5->{$file}";
