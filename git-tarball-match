@@ -95,29 +95,58 @@ sub md5sum_out_to_hash {
 	return %hash;
 }
 
+sub read_cmd_output {
+	my ($cmd) = @_;
+	local $/ = undef;
+	open my $fd, '-|', $cmd or die "$cmd: $?";
+	my $out = <$fd>;
+	close $fd;
+	return $out;
+}
+
+sub get_git_filenames {
+	my ($commit) = @_;
+	my $lstree_out = read_cmd_output("git ls-tree -rz $commit");
+	my @files;
+	foreach my $line (split "\0", $lstree_out) {
+		my @fields = split(" ", $line, 3);
+		if ($fields[1] ne 'blob') {
+			next;
+		}
+		my $filename = (split("\t", $fields[2], 2))[1];
+		push @files, $filename;
+	}
+	return @files;
+}
+
+sub escape_single_quotes {
+	my ($filename) = @_;
+	$filename =~ s/'/'\\''/;
+	return $filename;
+}
+
 sub get_git_md5sum {
 	my ($commit_sha1) = @_;
 	my %hash;
 	#open my $fd, '-|', "git ls-files --with-tree=$commit_sha1" or die "git ls-files: $?";
-	my $cmd = "git ls-tree -r --name-only $commit_sha1";
-	open my $fd, '-|', $cmd or die "$cmd: $?";
-	my $tar_stderr_file = "$tmp_dir/error.txt";
-	while (my $file = <$fd>) {
-		chomp $file;
-		my $md5_cmd = "{ git show '$commit_sha1:./$file'|md5sum|awk '{print \$1}'; } 2> $tar_stderr_file";
+	my @git_files = get_git_filenames($commit_sha1);
+	my $err_file = "$tmp_dir/error.txt";
+	foreach my $file (@git_files) {
+		if ($file =~ /'/) {
+			$file = escape_single_quotes($file);
+		}
+		my $md5_cmd = "{ git show '$commit_sha1:./$file'|md5sum|awk '{print \$1}'; } 2> $err_file";
 		my $md5 = `$md5_cmd`;
-		if ( -s $tar_stderr_file) {
-			print "$cmd ";
+		if ( -s $err_file) {
 			print "-- [$md5_cmd]\n";
-			verbose "cat $tar_stderr_file";
-			system("cat $tar_stderr_file");
+			verbose "cat $err_file";
+			system("cat $err_file");
 			print "Press any key to continue...";
 			<STDIN>;
 		}
 		chomp $md5;
 		$hash{$file} = $md5;
 	}
-	close $fd;
 	return %hash;
 }
 
