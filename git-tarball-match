@@ -186,7 +186,7 @@ sub md5_score {
 	#
 	# total_perfect_score = (n unique files in both git and tgz) * 3
 
-	foreach my $file (keys %$git_md5) {
+	foreach my $file (sort keys %$git_md5) {
 		if ($tgz_md5->{$file}) {
 			if ($tgz_md5->{$file} eq $git_md5->{$file}) {
 				$nmatch += 1;
