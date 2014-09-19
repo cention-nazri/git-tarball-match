@@ -109,7 +109,8 @@ sub get_git_md5sum {
 		if ( -s $tar_stderr_file) {
 			print "$cmd ";
 			print "-- [$md5_cmd]\n";
-			system("echo cat $tar_stderr_file; cat $tar_stderr_file");
+			verbose "cat $tar_stderr_file";
+			system("cat $tar_stderr_file");
 			print "Press any key to continue...";
 			<STDIN>;
 		}
