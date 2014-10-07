@@ -332,3 +332,4 @@ if ($opt_sort) {
 		print "Closest match: " . format_score_report($highest_score) . "\n";
 	}
 }
+exit 1;
