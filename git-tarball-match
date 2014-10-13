@@ -18,6 +18,7 @@ my $opt_limit = 0;
 my $opt_show_match;
 my $opt_show_nomatch;
 my $opt_sort;
+my $opt_help;
 my $xdir = tempdir( CLEANUP => 1 );
 
 my $tmp_dir = '/tmp';
@@ -42,7 +43,61 @@ GetOptions("ignore=s" => \$ignore_pattern,
 	"sort" => \$opt_sort,
 	"debug=i" => \$debug,
 	"commit=s" => \$commit,
+	"help" => \$opt_help,
 ) or die "Error in args";
+
+my $me = basename($0);
+if ($opt_help) {
+	print <<EOF;
+Usage: $me [options] <tarball>
+
+DESCRIPTION
+	git-tarball-match compares each commit starting from HEAD up to the
+	first commit to find the commit whose files matches the files in the
+	tarball. When there are no \"perfect\" match then the commit with the
+	highest score is reported.
+
+OPTIONS
+    --ignore=<regex>
+	Do not compare files with filenames that matches <regex>
+
+    --verbose
+	Be more verbose
+
+    --strip-components=1
+	The number of leading paths to remove from the path recorded in the
+	tarball before making the comparison with the files in the git
+	repository. Default is 1.
+
+    --diff-line
+	Show only one line of output for each file that differs.
+
+    --diff
+	Show the full diff for each comparison.
+
+    --diff-opt=<git-diff-opt>
+	Options to pass to git-diff when performing the comparison.
+
+    --limit=<N>
+	Compare up to <N> commits starting from HEAD.
+
+    --show-no-match
+	Show the names of files that doesn't match.
+
+    --show-match
+	Show the name of files that does match.
+
+    --debug
+	Show debug output.
+
+    --commit=<commit>
+	Compare the tarball with the given commit only.
+
+    --help
+	Show this help.
+EOF
+	exit 0;
+}
 
 if ($debug) {
 	$|++;
