@@ -352,7 +352,7 @@ my $commit_count = 0;
 while (my $h = <$git_log>) {
 	$commit_count++;
 	if ($opt_limit > 0 && $commit_count > $opt_limit) {
-		exit 0;
+		exit 1;
 	}
 	chomp $h;
 	my %gitmd5sum = get_git_md5sum($h);
